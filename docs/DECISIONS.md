@@ -40,3 +40,30 @@ pinned dev environment.
 One dependency providing prebuilt grammars for all 8 target languages instead
 of managing 8 separate grammar packages and their ABI-version compatibility
 with the `tree-sitter` core package individually.
+
+## 2026-09-16 — Name-based (not type-resolved) CALLS/IMPORTS resolution
+
+Building a real type checker per language is out of scope. CALLS edges
+resolve a call site's callee name first against functions in the same file,
+then against a global name index; ties pick the first match deterministically.
+IMPORTS edges resolve the written module/include string against an index of
+every indexed file's path (several normalized forms: dotted → path, relative-
+to-importer, `::` → path). External/stdlib imports that don't correspond to
+an indexed file simply don't produce an edge — correct behavior, not a bug.
+
+This is honest best-effort program analysis, not full call-graph precision.
+Documented so the PageRank/graph claims aren't overstated.
+
+## 2026-09-16 — Multi-repo target corpus indexed per-repo, then merged with namespaced ids
+
+Indexing all 8 corpus repos in one `GraphBuilder.build()` call (by pointing
+it at their common parent directory) let the global name-index CALLS
+resolution match same-named functions **across unrelated repos** (e.g. a
+`main` in `redis` resolving to a `main` in `gin`) — inflated edge count from
+a real run of 127,836 down to the correct 119,406 once fixed. Fix
+(`distill.indexing.multi_repo.build_multi_repo`): index each repo
+independently (so name resolution stays scoped to that repo, which is also
+what happens in normal single-repo usage via `distill index`), then merge
+node/edge lists with an `f"{repo_name}/{id}"` prefix to avoid id collisions.
+This is a benchmark-corpus-only concern — normal `distill index <repo>`
+usage is unaffected since it only ever sees one repo per call.

@@ -77,3 +77,60 @@ re-indexing don't need to re-parse.
   (one per target language — flask, express, zod, gson, gin, ripgrep, redis,
   json), indexed each independently so name resolution doesn't leak across
   repos, then merged with namespaced ids. See `docs/BENCHMARKS.md`.
+
+## BM25 vs. embeddings
+
+**One-liner:** BM25 is exact-term lexical scoring (great for identifiers,
+error strings, exact keyword matches); embeddings capture semantic similarity
+(great for paraphrased natural-language queries) — fusing both covers what
+either misses alone.
+
+**Key points:**
+- BM25 via `bm25s`; dense via a local `sentence-transformers` model
+  (`all-MiniLM-L6-v2`), no API key required.
+- Corpus and query **must** share one `Tokenizer` instance/vocab in `bm25s` —
+  tokenizing them separately silently builds mismatched vocabularies and
+  zeroes every score on a small corpus (real bug hit and fixed here; see
+  `docs/DECISIONS.md`).
+- Retrieval candidates are CLASS/FUNCTION nodes only (not FILE nodes) — a
+  whole file is a poor "snippet" and, for small files, a near-duplicate of
+  the one symbol it contains.
+
+**Likely Q&A:**
+- *Why didn't the BM25 unit test catch the tokenizer bug?* It used one
+  `BM25Index.build()` + `.search()` call, which happened to route through the
+  same (buggy) code path consistently for that specific corpus size. The
+  Phase 2 end-to-end pipeline integration test — a real query against a real
+  small repo — is what surfaced it. Lesson: per-stage unit tests and one
+  integration test both matter; they catch different classes of bugs.
+- *Why cosine similarity via FAISS `IndexFlatIP` instead of L2 distance?*
+  Embeddings are L2-normalized at encode time, so inner product equals cosine
+  similarity — flat (exact, brute-force) search is fine at this node count;
+  swappable for an ANN index (e.g. `IndexIVFFlat`) if the corpus grew large
+  enough that exact search became the bottleneck.
+
+## Reciprocal-rank fusion (RRF)
+
+**One-liner:** RRF combines multiple ranked lists into one by scoring each
+item `1/(k+rank)` per list it appears in and summing — no need to normalize
+or compare raw BM25 vs. cosine scores, which live on incomparable scales.
+
+**Key points:**
+- Formula verified against a hand-computed toy case in
+  `tests/test_fusion.py` (`k=1`, two 3-item lists, exact expected scores).
+- Rank-only: a document present but scored 0 relevance in a list still gets
+  the same rank-based credit as one scored 0.01 — a known RRF blind spot,
+  most visible with very small candidate sets (a couple of items can tie
+  perfectly and cancel out a real signal from the other list).
+- PageRank is layered on top as an additive prior
+  (`apply_pagerank_prior`), not folded into the RRF sum itself — keeps the
+  fusion formula itself exactly the standard, textbook one.
+
+**Likely Q&A:**
+- *Why RRF instead of a weighted sum of raw scores?* BM25 scores and cosine
+  similarities aren't on comparable scales (BM25 is unbounded, cosine is
+  [-1,1]) — RRF sidesteps needing to normalize them by only using rank
+  position, which is standard practice for fusing heterogeneous rankers.
+- *What's `k` for?* A smoothing constant — larger `k` flattens the
+  difference between e.g. rank 1 and rank 2 (`1/61` vs `1/62` is a tiny gap);
+  smaller `k` makes top ranks dominate much more sharply.

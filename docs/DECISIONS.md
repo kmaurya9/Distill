@@ -67,3 +67,27 @@ what happens in normal single-repo usage via `distill index`), then merge
 node/edge lists with an `f"{repo_name}/{id}"` prefix to avoid id collisions.
 This is a benchmark-corpus-only concern — normal `distill index <repo>`
 usage is unaffected since it only ever sees one repo per call.
+
+## 2026-09-16 — `bm25s` requires a shared `Tokenizer` for corpus and query
+
+`bm25s.tokenize(texts)` called once for the corpus and again for a query
+builds two **independent** word→id vocabularies. With a small corpus,
+tokenizer output looks fine in isolation but every query then scores 0 —
+the query's token ids don't correspond to the corpus's ids at all, so
+`retrieve()` compares apples to oranges. Caught by the Phase 2 end-to-end
+pipeline integration test (`tests/test_pipeline.py`), not by the isolated
+unit test (`tests/test_bm25_index.py`), which happened not to expose it —
+a reminder that unit tests per stage don't replace an integration test.
+
+Fix: `distill.retrieval.bm25_index.BM25Index` owns one `bm25s.tokenization.
+Tokenizer` instance; the corpus is indexed with `update_vocab=True`, queries
+with `update_vocab=False` so unseen query words are dropped (correct — they
+can't match anything in the corpus) rather than silently reassigned new ids.
+
+## 2026-09-16 — Retrieval candidates are CLASS/FUNCTION nodes, not FILE nodes
+
+FILE nodes are part of the graph (for PageRank's IMPORTS edges and
+`get_context`), but including them as BM25/embedding search candidates makes
+small files near-duplicates of the one symbol they contain, which pollutes
+ranking with a redundant near-tie. `RetrievalIndex` computes PageRank over the
+full graph but only builds the BM25/vector indices over CLASS/FUNCTION nodes.

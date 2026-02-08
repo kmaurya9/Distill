@@ -134,3 +134,52 @@ or compare raw BM25 vs. cosine scores, which live on incomparable scales.
 - *What's `k` for?* A smoothing constant — larger `k` flattens the
   difference between e.g. rank 1 and rank 2 (`1/61` vs `1/62` is a tiny gap);
   smaller `k` makes top ranks dominate much more sharply.
+
+## MMR re-ranking
+
+**One-liner:** MMR (maximal marginal relevance) re-ranks the fused top-k by
+iteratively picking `argmax(λ·relevance − (1−λ)·max_similarity_to_selected)`,
+trading a little relevance for diversity so near-duplicate snippets don't
+all occupy the final result.
+
+**Key points:**
+- Relevance scores are min-max normalized within the candidate pool before
+  combining with cosine similarity (which lives in a different range).
+- `λ=1` degenerates to plain top-k by relevance; `λ=0` degenerates to pure
+  diversity (ignores relevance entirely) — `0.5` balances both.
+- This is *exactly* the mechanism that reduces tokens sent to the agent
+  without losing coverage: the fused top-k is often the same function found
+  three ways (by name, by call site, by docstring) — MMR keeps one copy and
+  spends the rest of the budget on genuinely different relevant code.
+- Test (`tests/test_rerank.py`): a near-duplicate embedding is suppressed
+  in favor of a lower-relevance-but-diverse one.
+
+## MCP server
+
+**One-liner:** `distill serve <repo>` indexes the repo in-memory and exposes
+`search_code` / `get_symbol` / `get_context` as MCP tools over stdio — any
+MCP-compatible agent (Claude Code, Cursor, a custom client) can call it
+without any Distill-specific integration code.
+
+**Key points:**
+- Built on the official `mcp` Python SDK's `MCPServer` (this SDK major
+  version renamed `FastMCP` → `MCPServer`; found via the actual
+  `ModuleNotFoundError` migration message, not assumed from older docs).
+- `search_code(query, k)` → fused + MMR-reranked snippets; `get_symbol(id)` →
+  one symbol by node id; `get_context(file, line)` → smallest enclosing
+  class/function for a file+line, falling back to the whole file.
+- Proof it's real, not just "it runs": `tests/test_mcp_server.py` spawns
+  `distill serve` as a subprocess and drives it with the official MCP
+  **client** SDK over stdio (the same transport a real agent uses) — list
+  tools, call `search_code`, get back real ranked results with content.
+
+**Likely Q&A:**
+- *Why stdio instead of SSE/HTTP?* Stdio is what a local coding agent
+  (Claude Code, Cursor) spawns as a subprocess — no server process or port to
+  manage, matches how `pip install distill-mcp && distill serve <repo>` is
+  meant to be used.
+- *Does the index update if the repo changes while the server is running?*
+  Not yet — the server builds the index once at startup. Incremental
+  re-indexing (Phase 4) targets `distill index`'s re-run behavior; wiring
+  live re-indexing into a running server is a natural next step, not yet
+  built.

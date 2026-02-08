@@ -84,6 +84,15 @@ Tokenizer` instance; the corpus is indexed with `update_vocab=True`, queries
 with `update_vocab=False` so unseen query words are dropped (correct — they
 can't match anything in the corpus) rather than silently reassigned new ids.
 
+## 2026-09-16 — `mcp` SDK v2 renamed `FastMCP` to `MCPServer`
+
+`pyproject.toml` pins `mcp>=1.2.0` (loose), which resolved to `2.2.0` — a
+major version where `mcp.server.fastmcp.FastMCP` was renamed to
+`mcp.server.mcpserver.MCPServer` (discovered from the real
+`ModuleNotFoundError` migration message, not assumed from docs written for
+v1). API is otherwise equivalent: `.tool()` decorator, `.run()` /
+`.run_stdio_async()`.
+
 ## 2026-09-16 — Retrieval candidates are CLASS/FUNCTION nodes, not FILE nodes
 
 FILE nodes are part of the graph (for PageRank's IMPORTS edges and

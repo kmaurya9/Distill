@@ -38,9 +38,13 @@ def index(repo_path: str, db_path: str | None):
 
 
 @main.command()
-def serve():
-    """Start the Distill MCP server (stdio transport)."""
-    click.echo("Starting Distill MCP server ... (not yet implemented)")
+@click.argument("repo_path", type=click.Path(exists=True, file_okay=False))
+def serve(repo_path: str):
+    """Index a repo and start the Distill MCP server (stdio transport)."""
+    from distill.server.mcp_server import build_server
+
+    server = build_server(Path(repo_path).resolve())
+    server.run()
 
 
 if __name__ == "__main__":

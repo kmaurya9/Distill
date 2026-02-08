@@ -9,6 +9,7 @@ from distill.retrieval.bm25_index import BM25Index
 from distill.retrieval.embeddings import EmbeddingModel
 from distill.retrieval.fusion import apply_pagerank_prior, reciprocal_rank_fusion
 from distill.retrieval.pagerank import compute_pagerank
+from distill.retrieval.rerank import mmr_rerank
 from distill.store.snippets import SnippetReader
 from distill.store.vector_store import VectorStore
 
@@ -70,3 +71,17 @@ class RetrievalIndex:
         fused = reciprocal_rank_fusion([bm25_ranked, dense_ranked])
         fused = apply_pagerank_prior(fused, self.pagerank_scores, alpha=pagerank_alpha)
         return fused[:k]
+
+    def search(
+        self,
+        text: str,
+        k: int = 10,
+        candidate_k: int | None = None,
+        pagerank_alpha: float = 0.5,
+        mmr_lambda: float = 0.5,
+    ) -> list[tuple[str, float]]:
+        """Fused ranking, then MMR re-ranked for a small, non-redundant top-k
+        — this is what `search_code` (the MCP tool) calls."""
+        pool_size = max(k * 4, 20)
+        fused = self.query(text, k=pool_size, candidate_k=candidate_k, pagerank_alpha=pagerank_alpha)
+        return mmr_rerank(fused, self.embeddings_by_id, k=k, lambda_param=mmr_lambda)

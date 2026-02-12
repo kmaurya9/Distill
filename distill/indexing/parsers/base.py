@@ -17,8 +17,17 @@ class Symbol:
     name: str
     start_line: int
     end_line: int
-    node: TSNode
+    node: TSNode | None
     parent_name: str | None = None  # enclosing class name, if this is a method
+    start_byte: int = -1
+    end_byte: int = -1
+
+    def __post_init__(self) -> None:
+        # Cache reconstruction builds Symbols with no live tree-sitter node
+        # (see distill.indexing.cache), passing start_byte/end_byte directly.
+        if self.node is not None and self.start_byte == -1:
+            self.start_byte = self.node.start_byte
+            self.end_byte = self.node.end_byte
 
 
 @dataclass

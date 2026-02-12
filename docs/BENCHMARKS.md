@@ -28,14 +28,14 @@ print(len(nodes), len(edges))
 "
 ```
 
-**Result (measured 2026-09-16):**
+**Result (measured 2026-09-16, as stored in the graph DB):**
 
 | Metric | Count |
 |---|---|
 | Total nodes | **33,129** |
-| Total edges | **119,406** |
+| Total edges | **87,001** |
 | — CONTAINS | 30,549 |
-| — CALLS | 87,248 |
+| — CALLS | 54,843 |
 | — IMPORTS | 1,609 |
 | FILE nodes | 2,580 |
 | CLASS nodes | 3,672 |
@@ -46,6 +46,17 @@ java 264, go 99, rust 110, c 806, cpp 505.
 
 Crosses the 12K+ node claim by a wide margin (33,129 nodes); even the largest
 single repo alone (redis, 13,114 nodes) exceeds it.
+
+**Note on the edge count:** `GraphBuilder.build()` returns a raw edge list
+that can contain duplicate `(src_id, dst_id, kind)` triples — e.g. function
+A calling function B three times in its body produces three `CallSite`
+records, hence three list entries for the same logical edge. The `edges`
+table's `PRIMARY KEY (src_id, dst_id, kind)` collapses these on insert (the
+correct semantics — PageRank and the graph care whether an edge *exists*,
+not how many call sites produced it). The raw list is 119,406 long; **87,001**
+is the real, deduplicated number as it exists in the graph DB and is what's
+reported here. Caught by re-deriving this number through an actual
+`GraphStore` instead of trusting the in-memory list length.
 
 **Known limitation:** CALLS/IMPORTS resolution is name-and-path based, not
 type-resolved — a call to a common name (e.g. `init`) can match the wrong

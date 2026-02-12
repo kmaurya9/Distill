@@ -4,12 +4,17 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tree_sitter_language_pack import get_parser
 
 from distill.indexing.imports import ImportIndex
 from distill.indexing.parsers.base import FileExtraction, content_hash
 from distill.indexing.parsers.registry import get_extractor
+
+if TYPE_CHECKING:
+    # Avoids a cycle: graph_builder <- cache <- graph_store <- graph_builder.
+    from distill.indexing.cache import ParseCache
 
 SKIP_DIRS = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", "target",
@@ -59,6 +64,11 @@ class GraphBuilder:
     """Walks a repo, parses every recognized source file with the matching
     tree-sitter extractor, and builds the code graph (nodes + edges)."""
 
+    def __init__(self, parse_cache: "ParseCache | None" = None) -> None:
+        self.parse_cache = parse_cache
+        self.cache_hits = 0
+        self.cache_misses = 0
+
     def build(self, repo_root: str | Path) -> tuple[list[GraphNode], list[GraphEdge]]:
         repo_root = Path(repo_root).resolve()
         nodes: list[GraphNode] = []
@@ -77,9 +87,18 @@ class GraphBuilder:
                 source = path.read_bytes()
             except OSError:
                 continue
-            parser = get_parser(extractor.language)
-            tree = parser.parse(source)
-            extraction = extractor.extract(source, tree.root_node)
+
+            file_hash = content_hash(source.decode("utf-8", errors="replace"))
+            extraction = self.parse_cache.get(file_hash) if self.parse_cache else None
+            if extraction is not None:
+                self.cache_hits += 1
+            else:
+                self.cache_misses += 1
+                parser = get_parser(extractor.language)
+                tree = parser.parse(source)
+                extraction = extractor.extract(source, tree.root_node)
+                if self.parse_cache:
+                    self.parse_cache.put(file_hash, extraction)
 
             file_node_id = rel_path
             num_lines = source.count(b"\n") + 1
@@ -93,7 +112,7 @@ class GraphBuilder:
                     start_line=1,
                     end_line=num_lines,
                     docstring=None,
-                    content_hash=content_hash(source.decode("utf-8", errors="replace")),
+                    content_hash=file_hash,
                 )
             )
 
@@ -104,7 +123,7 @@ class GraphBuilder:
                 qualified = symbol.name
                 node_id = f"{rel_path}::{qualified}::{symbol.start_line}"
                 class_node_id_by_name[symbol.name] = node_id
-                text = source[symbol.node.start_byte : symbol.node.end_byte].decode(
+                text = source[symbol.start_byte : symbol.end_byte].decode(
                     "utf-8", errors="replace"
                 )
                 nodes.append(
@@ -129,7 +148,7 @@ class GraphBuilder:
                     continue
                 qualified = f"{symbol.parent_name}.{symbol.name}" if symbol.parent_name else symbol.name
                 node_id = f"{rel_path}::{qualified}::{symbol.start_line}"
-                text = source[symbol.node.start_byte : symbol.node.end_byte].decode(
+                text = source[symbol.start_byte : symbol.end_byte].decode(
                     "utf-8", errors="replace"
                 )
                 nodes.append(

@@ -64,8 +64,11 @@ re-indexing don't need to re-parse.
   `cache(content_hash, parsed_json, embedding)`.
 - Node id = `{file_path}::{qualified_name}::{start_line}` — stable across
   re-runs as long as the symbol doesn't move/rename.
-- Measured on the real 8-language target corpus (2026-09-16): **33,129
-  nodes, 119,406 edges** (30,549 CONTAINS, 87,248 CALLS, 1,609 IMPORTS).
+- Measured on the real 8-language target corpus (2026-09-16), as stored:
+  **33,129 nodes, 87,001 edges** (30,549 CONTAINS, 54,843 CALLS, 1,609
+  IMPORTS). The `edges` PRIMARY KEY `(src_id, dst_id, kind)` deduplicates
+  repeated call sites between the same two functions — the raw in-memory
+  list is 119,406 long before that collapse.
 
 **Likely Q&A:**
 - *Why SQLite instead of a graph database?* The graph is a few hundred
@@ -179,7 +182,42 @@ without any Distill-specific integration code.
   manage, matches how `pip install distill-mcp && distill serve <repo>` is
   meant to be used.
 - *Does the index update if the repo changes while the server is running?*
-  Not yet — the server builds the index once at startup. Incremental
-  re-indexing (Phase 4) targets `distill index`'s re-run behavior; wiring
-  live re-indexing into a running server is a natural next step, not yet
-  built.
+  Not yet — the server builds the index once at startup (though startup
+  itself now reuses the on-disk parse/embedding cache from any prior
+  `distill index` run — see the Incremental indexing / caching card). Live
+  re-indexing of a *running* server is a natural next step, not yet built.
+
+## Incremental indexing / caching
+
+**One-liner:** re-running `distill index` (or starting `distill serve`)
+against a repo that's already been indexed only re-parses and re-embeds
+files whose content actually changed — everything else is read from the
+`.distill/graph.db` cache untouched.
+
+**Key points:**
+- Change detection is **content-hash based, not mtime-based**: each file's
+  current hash is compared to the hash stored on its FILE node. Robust to
+  `touch`, checkouts, and clock skew (verified — `touch`ing a file with
+  unchanged content correctly reports 0 changed files).
+- Content-addressed caching (`distill/indexing/cache.py`) has two caches,
+  both keyed by `hash(content)`, not by path: `ParseCache` (skip re-running
+  tree-sitter + symbol extraction) and `EmbeddingCache` (skip re-running the
+  embedding model). Identical content at a *different* path (a vendored
+  copy, a duplicated function) is a cache hit either way.
+- A full in-memory graph pass still runs on every re-index — CALLS/IMPORTS
+  resolution is inherently repo-wide — but only *touched* files' nodes get
+  written back to the store; untouched files' rows are never re-issued.
+- Measured on the real flask corpus: cold index ~0.2s; re-running against
+  the same unchanged repo: **0.0s wall / all 83 files reported unchanged**.
+
+**Likely Q&A:**
+- *Why content hash instead of mtime/git-diff, like the build plan
+  suggested?* Content hash is what the plan's schema already stores per
+  node (`content_hash` column, meant for caching) — reusing it for change
+  detection avoids a second detection mechanism and is correct regardless
+  of filesystem timestamp resolution or whether the repo is even a git repo.
+- *What's the actual proof "only that file's nodes are touched," not just
+  "the count looks right"?* `tests/test_incremental.py` fetches the
+  unrelated file's node object before and after modifying a different file,
+  and asserts it's byte-for-byte identical — plus asserts the parse cache
+  reports 0 misses for the untouched file.

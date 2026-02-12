@@ -93,6 +93,17 @@ major version where `mcp.server.fastmcp.FastMCP` was renamed to
 v1). API is otherwise equivalent: `.tool()` decorator, `.run()` /
 `.run_stdio_async()`.
 
+## 2026-09-16 — Reported edge count must come from GraphStore, not the raw list
+
+`GraphBuilder.build()`'s returned edge list can contain duplicate
+`(src_id, dst_id, kind)` triples (e.g. a function calling another three
+times in its body yields three `CallSite` records). The `edges` table's
+`PRIMARY KEY (src_id, dst_id, kind)` correctly collapses these — a graph
+edge represents existence of a call relationship, not call-site count. Found
+by comparing `len(edges)` (119,406) against a real `GraphStore.edge_count()`
+after inserting the same list (87,001) and noticing they didn't match.
+`docs/BENCHMARKS.md` now reports the deduplicated, stored number.
+
 ## 2026-09-16 — Retrieval candidates are CLASS/FUNCTION nodes, not FILE nodes
 
 FILE nodes are part of the graph (for PageRank's IMPORTS edges and

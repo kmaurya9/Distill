@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -12,6 +13,9 @@ from distill.retrieval.pagerank import compute_pagerank
 from distill.retrieval.rerank import mmr_rerank
 from distill.store.snippets import SnippetReader
 from distill.store.vector_store import VectorStore
+
+if TYPE_CHECKING:
+    from distill.indexing.cache import EmbeddingCache
 
 
 class RetrievalIndex:
@@ -28,7 +32,13 @@ class RetrievalIndex:
         self.embeddings_by_id: dict[str, np.ndarray] = {}
         self.texts_by_id: dict[str, str] = {}
 
-    def build(self, nodes: list[GraphNode], edges: list[GraphEdge], repo_root: str | Path) -> None:
+    def build(
+        self,
+        nodes: list[GraphNode],
+        edges: list[GraphEdge],
+        repo_root: str | Path,
+        embedding_cache: "EmbeddingCache | None" = None,
+    ) -> None:
         # PageRank runs over the full graph (FILE-FILE via IMPORTS, FUNCTION-
         # FUNCTION via CALLS are disjoint components either way). Retrieval
         # candidates are CLASS/FUNCTION nodes only — a whole FILE is rarely a
@@ -47,7 +57,44 @@ class RetrievalIndex:
 
         self.bm25.build(self.node_ids, texts)
 
-        embeddings = self.embedding_model.encode(texts)
+        # Resolve embeddings per unique content_hash, not per node: identical
+        # content (a duplicated function, or the same file re-seen across
+        # runs) is a cache hit whether the duplicate is in this same batch or
+        # a previous run — the first occurrence of a hash triggers the only
+        # real model call; every later occurrence reuses it.
+        resolved: dict[str, np.ndarray] = {}
+        pending: set[str] = set()  # hashes already queued for encoding this batch
+        to_encode_hashes: list[str] = []
+        to_encode_texts: list[str] = []
+        is_hit: list[bool] = []
+        for node, text in zip(retrieval_nodes, texts):
+            h = node.content_hash
+            if h in resolved or h in pending:
+                is_hit.append(True)
+                continue
+            cached = embedding_cache.get(h) if embedding_cache else None
+            if cached is not None:
+                resolved[h] = cached
+                is_hit.append(True)
+                continue
+            pending.add(h)
+            to_encode_hashes.append(h)
+            to_encode_texts.append(text)
+            is_hit.append(False)
+
+        if to_encode_texts:
+            computed = self.embedding_model.encode(to_encode_texts)
+            for h, vec in zip(to_encode_hashes, computed):
+                resolved[h] = vec
+                if embedding_cache:
+                    embedding_cache.put(h, vec)
+
+        embeddings = np.zeros((len(retrieval_nodes), self.embedding_model.dim), dtype="float32")
+        for i, node in enumerate(retrieval_nodes):
+            embeddings[i] = resolved[node.content_hash]
+        self.embedding_cache_hits = sum(is_hit)
+        self.embedding_cache_misses = len(is_hit) - self.embedding_cache_hits
+
         self.vector_store = VectorStore(dim=self.embedding_model.dim)
         self.vector_store.build(self.node_ids, embeddings)
         self.embeddings_by_id = dict(zip(self.node_ids, embeddings))

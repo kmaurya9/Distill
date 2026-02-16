@@ -1,0 +1,122 @@
+[
+  {
+    "query": "how do I convert a Python object into a JSON response",
+    "file_path": "flask/src/flask/json/__init__.py",
+    "name": "jsonify",
+    "start_line": 138
+  },
+  {
+    "query": "how do I send a file as the response body",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "send_file",
+    "start_line": 417
+  },
+  {
+    "query": "how do I redirect the client to another URL",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "redirect",
+    "start_line": 254
+  },
+  {
+    "query": "how do I turn a view function's return value into a response object",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "make_response",
+    "start_line": 151
+  },
+  {
+    "query": "how do I abort the current request with an HTTP error code",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "abort",
+    "start_line": 281
+  },
+  {
+    "query": "how do I build a URL for a given endpoint name",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "url_for",
+    "start_line": 200
+  },
+  {
+    "query": "how do I render a Jinja template with some context variables",
+    "file_path": "flask/src/flask/templating.py",
+    "name": "render_template",
+    "start_line": 136
+  },
+  {
+    "query": "how do I register a URL rule on the app or a blueprint",
+    "file_path": "flask/src/flask/sansio/scaffold.py",
+    "name": "route",
+    "start_line": 344
+  },
+  {
+    "query": "how is the domain for the session cookie determined",
+    "file_path": "flask/src/flask/sessions.py",
+    "name": "get_cookie_domain",
+    "start_line": 175
+  },
+  {
+    "query": "should the session cookie be marked httponly",
+    "file_path": "flask/src/flask/sessions.py",
+    "name": "get_cookie_httponly",
+    "start_line": 195
+  },
+  {
+    "query": "how do I serve a static file from the static folder",
+    "file_path": "flask/src/flask/app.py",
+    "name": "send_static_file",
+    "start_line": 393
+  },
+  {
+    "query": "how does flask decide whether to autoescape a template file",
+    "file_path": "flask/src/flask/sansio/app.py",
+    "name": "select_jinja_autoescape",
+    "start_line": 533
+  },
+  {
+    "query": "how do I list all registered routes from the command line",
+    "file_path": "flask/src/flask/cli.py",
+    "name": "routes_command",
+    "start_line": 1061
+  },
+  {
+    "query": "how do I stream a response while keeping request context data available",
+    "file_path": "flask/src/flask/helpers.py",
+    "name": "stream_with_context",
+    "start_line": 63
+  },
+  {
+    "query": "where does flask write error logs when there is no active request",
+    "file_path": "flask/src/flask/logging.py",
+    "name": "wsgi_errors_stream",
+    "start_line": 16
+  },
+  {
+    "query": "how do I parse the quality value and params from an accept header",
+    "file_path": "express/lib/utils.js",
+    "name": "acceptParams",
+    "start_line": 89
+  },
+  {
+    "query": "how do I generate an etag for a response body",
+    "file_path": "express/lib/utils.js",
+    "name": "createETagGenerator",
+    "start_line": 249
+  },
+  {
+    "query": "how do I parse a query string using the extended qs syntax",
+    "file_path": "express/lib/utils.js",
+    "name": "parseExtendedQueryString",
+    "start_line": 267
+  },
+  {
+    "query": "how do I stat a file and swallow the error if it does not exist",
+    "file_path": "express/lib/view.js",
+    "name": "tryStat",
+    "start_line": 197
+  },
+  {
+    "query": "how do I log an error to stderr but only outside the test environment",
+    "file_path": "express/lib/application.js",
+    "name": "logerror",
+    "start_line": 615
+  }
+]

@@ -104,6 +104,17 @@ by comparing `len(edges)` (119,406) against a real `GraphStore.edge_count()`
 after inserting the same list (87,001) and noticing they didn't match.
 `docs/BENCHMARKS.md` now reports the deduplicated, stored number.
 
+## 2026-09-16 — BM25Index must handle an empty corpus without crashing
+
+`bm25s.BM25.index()` on zero documents raises `ValueError: max() iterable
+argument is empty` deep in its vocab-building internals. A repo (or a single
+file passed to `distill serve`) with zero CLASS/FUNCTION symbols — e.g. a
+file containing only comments — hits this: `RetrievalIndex.build()` filters
+to CLASS/FUNCTION nodes, which can legitimately be empty. Caught by a new
+`get_context` MCP test using a comment-only file, not anticipated in advance.
+Fix: `BM25Index.build()` short-circuits on empty input, leaving the retriever
+unset (`search()` already returned `[]` for that case).
+
 ## 2026-09-16 — Retrieval candidates are CLASS/FUNCTION nodes, not FILE nodes
 
 FILE nodes are part of the graph (for PageRank's IMPORTS edges and

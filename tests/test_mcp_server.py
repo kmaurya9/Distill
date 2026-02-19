@@ -54,3 +54,33 @@ async def test_search_code_returns_relevant_nonredundant_results(tmp_path):
                 "get_context", {"file_path": "auth.py", "line": 2}
             )
             assert context.structured_content["result"]["name"] == "validate_auth_token"
+
+
+@pytest.mark.anyio
+async def test_get_symbol_missing_id_returns_none(tmp_path):
+    _write_repo(tmp_path)
+    params = StdioServerParameters(
+        command=sys.executable, args=["-m", "distill.cli", "serve", str(tmp_path)]
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("get_symbol", {"node_id": "does-not-exist"})
+            assert result.structured_content["result"] is None
+
+
+@pytest.mark.anyio
+async def test_get_context_falls_back_to_whole_file_outside_any_symbol(tmp_path):
+    (tmp_path / "empty_ish.py").write_text("# just a comment\n# another comment\n")
+    params = StdioServerParameters(
+        command=sys.executable, args=["-m", "distill.cli", "serve", str(tmp_path)]
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "get_context", {"file_path": "empty_ish.py", "line": 1}
+            )
+            payload = result.structured_content["result"]
+            assert payload["kind"] == "FILE"
+            assert payload["name"] == "empty_ish.py"

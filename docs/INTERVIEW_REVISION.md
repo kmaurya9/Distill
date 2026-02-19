@@ -221,3 +221,61 @@ files whose content actually changed — everything else is read from the
   unrelated file's node object before and after modifying a different file,
   and asserts it's byte-for-byte identical — plus asserts the parse cache
   reports 0 misses for the untouched file.
+
+## Retrieval-quality evaluation (measured)
+
+**One-liner:** 20 hand-verified queries (found by grepping the real target
+corpus, reading the actual implementation, then looking up its real node id
+— not guessed) show the full fused+MMR pipeline's recall@1 (0.70) more than
+doubling BM25-alone (0.30) or embeddings-alone (0.40).
+
+**Key points:**
+- Full results (`docs/BENCHMARKS.md`): BM25-only MRR 0.474, embeddings-only
+  MRR 0.545, full pipeline MRR **0.739**.
+- Deliberately included hard/near-duplicate cases (e.g. `get_cookie_domain`
+  vs. `get_cookie_httponly` — five very similarly-worded methods in the same
+  class) to stress-test whether fusion earns its keep on genuinely ambiguous
+  queries, not just easy ones.
+- Capped at 20 queries instead of the build plan's 30–50 — an explicit,
+  documented scope cut (playbook's fallback ladder), not a silent shortcut:
+  hand-labeling (verifying each answer is actually correct) is the one task
+  here that can't be sped up by tooling.
+
+**Likely Q&A:**
+- *How do you know the labels are actually correct, not just plausible
+  function names?* Each one was read in full before being added — e.g. the
+  `logerror` label was only added after confirming it does exactly "log to
+  stderr unless `env === 'test'`," not assumed from the name.
+- *Why report recall@1 specifically as the headline number?* It's the
+  strictest, most interview-relevant metric — "does the very first result
+  answer the question" is what determines whether an agent needs a second
+  round-trip.
+
+## Token-reduction result (measured)
+
+**One-liner:** measured (not assumed) token counts, via `tiktoken`
+`cl100k_base`, show a 55% mean / 76% aggregate reduction versus reading the
+whole file containing the answer — with an honestly-reported negative
+outlier case explained, not hidden.
+
+**Key points:**
+- Naive baseline = whole file containing the answer; Distill = `search_code`
+  MMR top-5. Aggregate: 90,450 → 21,700 tokens (76.0% reduction).
+- 3 of 20 queries show a *negative* reduction — all are cases where the
+  naive file is already small (554–1,388 tokens) and a fixed `k=5` overshoots
+  it by pulling in snippets from other, larger files.
+- The résumé's placeholder "40–90%" isn't exactly this repo's measured
+  range — the honest number to say out loud is **55% mean / 76% aggregate**,
+  with the caveat above, per the build plan's explicit instruction to report
+  what's measured rather than force-fit the placeholder.
+
+**Likely Q&A:**
+- *Why does reduction vary so much per query (-82% to 93%)?* Reduction scales
+  with how large/numerous the naive alternative is. Serving a static file
+  required reading a 13,737-token file naively vs. 954 tokens via Distill
+  (93.1%) — a large file benefits enormously. A single 554-token logging
+  module needs no retrieval at all; forcing `k=5` there can lose.
+- *Why `k=5` and not tune it per query?* Fixed `k` matches how an agent
+  would actually call `search_code` in practice (one budget, not a
+  per-query oracle) — tuning `k` per query to always win would be
+  overfitting the benchmark, not measuring it honestly.

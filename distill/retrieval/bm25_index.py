@@ -19,6 +19,9 @@ class BM25Index:
 
     def build(self, node_ids: list[str], texts: list[str]) -> None:
         self.node_ids = list(node_ids)
+        if not texts:
+            self._retriever = None
+            return
         corpus_tokens = self._tokenizer.tokenize(texts, update_vocab=True, show_progress=False)
         self._retriever = bm25s.BM25()
         self._retriever.index(corpus_tokens, show_progress=False)

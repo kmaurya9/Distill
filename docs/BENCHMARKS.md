@@ -64,6 +64,93 @@ same-named function within one repo if there are multiple candidates. This is
 a documented tradeoff of lightweight static analysis without a type checker
 per language (see `docs/DECISIONS.md`).
 
-## Retrieval-quality evaluation (claim #14) — pending Phase 5
+## Regression test suite (claim #14)
 
-## Token-reduction benchmark (claim #9) — pending Phase 5
+**Real count (measured 2026-09-16):** `pytest` collects **43 tests** — not
+padded to the résumé placeholder's 157. Breakdown: 8 golden-file parser
+tests (one per language), graph builder (4), graph store (3), multi-repo
+namespacing (1), incremental indexing (3), content-addressed caching (4),
+BM25 (2), embeddings (1), PageRank (2), RRF/fusion (3), MMR (2), pipeline
+integration (2, including the embedding-cache-reuse case), snippets (1), a
+real MCP client-to-server integration test plus 2 edge-case MCP tests (3),
+and CLI (4).
+
+Reproduce: `pytest tests/` → `43 passed`.
+
+**Why 43 and not 157:** the build plan's own instructions are explicit that
+the test count is "whatever pytest actually collects... don't pad to hit a
+number." This suite covers every claim in the claim-to-proof table with a
+real, non-trivial test (several caught actual bugs during development — see
+`docs/DECISIONS.md`: the bm25s vocab-mismatch bug, the cross-repo
+name-collision bug, and the empty-corpus BM25 crash were all found this way,
+not by inspection).
+
+## Retrieval-quality evaluation (claim #14)
+
+**Labeled set:** 20 hand-verified queries (`eval/dataset/queries.json`)
+against a flask + express eval corpus (1,973 nodes, 3,741 edges). Capped at
+20 rather than the build plan's 30–50 — per the playbook's fallback ladder
+("cap the eval set smaller ... still real numbers, just a smaller sample,
+say so honestly") — because hand-labeling is the one genuinely
+un-acceleratable task here: each label required grepping the real source for
+a plausible answer, then **reading the actual implementation** to confirm it
+answers the query, then looking up its real node id in the indexed graph.
+Not fabricated or guessed from function names alone.
+
+**Method:** `eval/run_eval.py` builds the eval corpus, builds one
+`RetrievalIndex`, and for each query runs three configurations against the
+same index — BM25 alone, dense embeddings alone, and the full fused
+(RRF + PageRank prior) + MMR pipeline — computing recall@k and MRR (cutoff
+50) against the hand-verified expected node id. Reproduce with:
+
+```bash
+python eval/run_eval.py
+```
+
+**Result (measured 2026-09-16):**
+
+| Config | recall@1 | recall@5 | recall@10 | MRR |
+|---|---|---|---|---|
+| BM25 only | 0.30 | 0.75 | 0.85 | 0.474 |
+| Embeddings only | 0.40 | 0.70 | 0.80 | 0.545 |
+| **Full pipeline (fused + MMR)** | **0.70** | 0.75 | **0.90** | **0.739** |
+
+The fused pipeline's recall@1 (0.70) more than doubles either signal alone
+(0.30 / 0.40) — exactly the claim that combining lexical + semantic + a
+PageRank prior beats either alone, measured rather than assumed. A few
+queries were deliberately near-duplicate/hard cases (`get_cookie_domain` vs.
+`get_cookie_httponly`, five very similarly-worded `sessions.py` methods) to
+stress-test whether fusion actually helps on genuinely ambiguous queries,
+not just easy ones.
+
+## Token-reduction benchmark (claim #9)
+
+**Method:** for the same 20 queries, compare tokens (OpenAI `cl100k_base`
+encoding via `tiktoken`) under two conditions: **naive** = the whole file
+containing the answer (a realistic fallback — grep for a name, read the
+file it's in), **distill** = `search_code(query, k=5)`'s MMR-reranked
+snippets. Reproduce with:
+
+```bash
+pip install -e ".[bench]"
+python bench/token_reduction.py
+```
+
+**Result (measured 2026-09-16):**
+
+| Metric | Value |
+|---|---|
+| Mean per-query reduction | **55.0%** |
+| Per-query range | **-82.1% to 93.1%** |
+| Aggregate (total distill tokens / total naive tokens) | **76.0%** reduction (90,450 → 21,700 tokens) |
+
+**Honest caveat, not smoothed over:** 3 of the 20 queries show a *negative*
+reduction — Distill returned more tokens than just reading the file. All
+three are cases where the "naive" file is already small (554–1,388 tokens)
+and a fixed `k=5` pulls in snippets from other, larger files that overshoot
+it. Retrieval's benefit scales with how large/numerous the naive alternative
+is — reading a 13,737-token file to serve a static file (93.1% reduction) is
+where this actually earns its keep; a tiny single-purpose file needs no
+retrieval at all. The résumé's "40–90%" range is close to but not exactly
+this repo's measured range — the honest figure to use is **55% mean /
+76% aggregate**, with the caveat that a naive small-file case can lose.

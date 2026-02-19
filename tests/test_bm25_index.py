@@ -14,3 +14,9 @@ def test_exact_keyword_match_ranks_top():
     results = index.search("validate auth token", k=3)
     assert results[0][0] == "n1"
     assert results[0][1] > results[1][1]
+
+
+def test_empty_corpus_does_not_crash():
+    index = BM25Index()
+    index.build([], [])
+    assert index.search("anything", k=5) == []

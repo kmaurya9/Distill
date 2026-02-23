@@ -104,6 +104,15 @@ by comparing `len(edges)` (119,406) against a real `GraphStore.edge_count()`
 after inserting the same list (87,001) and noticing they didn't match.
 `docs/BENCHMARKS.md` now reports the deduplicated, stored number.
 
+## 2026-09-16 — CI/CD uses PyPI trusted publishing (OIDC), not a stored token
+
+`.github/workflows/ci.yml`'s publish jobs use `pypa/gh-action-pypi-publish`
+with `id-token: write` (trusted publishing) rather than a `PYPI_API_TOKEN`
+repo secret. No long-lived token to leak; requires configuring a "trusted
+publisher" on PyPI/TestPyPI pointing at this repo + workflow + environment
+name once a real GitHub remote exists. See `docs/BENCHMARKS.md`'s CI/CD
+section for exactly what's pending vs. done (no remote is pushed yet).
+
 ## 2026-09-16 — BM25Index must handle an empty corpus without crashing
 
 `bm25s.BM25.index()` on zero documents raises `ValueError: max() iterable

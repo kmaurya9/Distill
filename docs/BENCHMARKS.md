@@ -144,6 +144,34 @@ python bench/token_reduction.py
 | Per-query range | **-82.1% to 93.1%** |
 | Aggregate (total distill tokens / total naive tokens) | **76.0%** reduction (90,450 → 21,700 tokens) |
 
+## CI/CD, packaging, and registries (claim #15)
+
+**Done, verified locally:**
+- `pyproject.toml` builds a real sdist + wheel (`python -m build`), verified
+  by installing the built wheel into a clean venv and confirming `distill
+  --help` works from it — a real "would `pip install distill-mcp` work"
+  check, not just "it has a pyproject.toml."
+- `.github/workflows/ci.yml`: test job (pytest across Python 3.11/3.12) →
+  build job (sdist/wheel + upload artifact) → publish-testpypi → publish-pypi
+  on a `v*` tag push, using PyPI trusted publishing (OIDC), not a stored
+  token.
+
+**Not yet done — needs the user's accounts/credentials, not mine:**
+- No GitHub remote has been pushed to yet (this repo is local-only), so the
+  workflow has never actually run in CI.
+- No PyPI/TestPyPI trusted-publisher configuration exists yet (requires a
+  PyPI account + linking it to a real GitHub repo/workflow).
+- No MCP Registry submission yet (requires deciding on and following its
+  current submission process).
+
+Per the playbook's fallback ladder ("drop the real PyPI/MCP Registry publish
+→ keep it installable locally and demoable"): the package is genuinely
+installable locally (`pip install -e .` and the built-wheel check above both
+verified) and the CI/CD pipeline is written and locally validated, but "green
+Actions run; package live on PyPI; registry entry exists" is not yet true.
+The résumé wording should say "with CI/CD configured for PyPI and the MCP
+Registry" until those three things are actually live.
+
 **Honest caveat, not smoothed over:** 3 of the 20 queries show a *negative*
 reduction — Distill returned more tokens than just reading the file. All
 three are cases where the "naive" file is already small (554–1,388 tokens)

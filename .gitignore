@@ -12,3 +12,8 @@ corpora/
 *.db
 *.index
 .DS_Store
+
+# kept locally for reference, not published
+/Distill-Build-Plan.md
+/Distill-ClaudeCode-Playbook.md
+/docs/INTERVIEW_REVISION.md
